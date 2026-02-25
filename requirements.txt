@@ -1,0 +1,8 @@
+torch
+scikit-learn
+ray[tune]
+optuna
+codecarbon
+pandas
+matplotlib
+numpy
