@@ -18,45 +18,16 @@ from ray.tune import with_parameters
 from ray.tune.search.optuna import OptunaSearch
 
 from config import MLP_SEARCH_SPACE, RF_SEARCH_SPACE
-from data import make_loaders
-from models import MLP
-from train import (
-    train_mlp, evaluate_mlp,
-    train_rf, evaluate_rf,
-    measure_resources_mlp, measure_resources_rf,
-)
+from train import train_mlp, train_rf
 
-
-# ---------------------------------------------------------------------------
-# Trial-Funktionen — eine pro Modelltyp
-# ---------------------------------------------------------------------------
 
 def _mlp_trial(config, data_np, seed):
     """Einen MLP-Trial durchführen: Modell bauen, trainieren, Metriken reporten."""
-    input_dim = data_np["X_train"].shape[1]
-
-    loaders = make_loaders(data_np, batch_size=config["batch_size"])
-
-    model = MLP(
-        input_dim,
-        hidden_dim=config["hidden_dim"],
-        dropout=config["dropout"],
-        num_layers=config.get("num_layers", 1),
-        activation=config.get("activation", "relu"),
+    res = train_mlp(
+        data_np["X_train"], data_np["y_train"],
+        data_np["X_val"],   data_np["y_val"],
+        config,
     )
-
-    res = measure_resources_mlp(
-        train_fn=lambda: train_mlp(
-            model,
-            loaders["train"],
-            loaders["val"],
-            lr=config["learning_rate"],
-            optimizer_name=config.get("optimizer_name", "adam"),
-            weight_decay=config.get("weight_decay", 0.0),
-        ),
-        eval_fn=lambda m: evaluate_mlp(m, loaders["val"]),
-    )
-
     tune.report({
         "val_auroc":      res["val_auroc"],
         "val_accuracy":   res["val_accuracy"],
@@ -68,14 +39,11 @@ def _mlp_trial(config, data_np, seed):
 
 def _rf_trial(config, data_np, seed):
     """Einen RF-Trial durchführen: Modell bauen, trainieren, Metriken reporten."""
-    params = {**config, "random_state": seed}
-
-    res = measure_resources_rf(
-        train_fn=lambda: train_rf(params, data_np["X_train"], data_np["y_train"]),
-        eval_fn=lambda m: evaluate_rf(m, data_np["X_val"], data_np["y_val"]),
-        X_val=data_np["X_val"],
+    res = train_rf(
+        data_np["X_train"], data_np["y_train"],
+        data_np["X_val"],   data_np["y_val"],
+        config, seed=seed,
     )
-
     tune.report({
         "val_auroc":      res["val_auroc"],
         "val_accuracy":   res["val_accuracy"],
@@ -84,10 +52,6 @@ def _rf_trial(config, data_np, seed):
         "energy_kwh":     res["energy_kwh"],
     })
 
-
-# ---------------------------------------------------------------------------
-# Hilfsfunktion: Ergebnisse aus dem analysis-Objekt rausziehen
-# ---------------------------------------------------------------------------
 
 def _extract_results(analysis, param_keys):
     """Alle Trial-Ergebnisse als Liste von Dicts zurückgeben."""
@@ -106,41 +70,20 @@ def _extract_results(analysis, param_keys):
     return rows
 
 
-# ---------------------------------------------------------------------------
-# Hilfsfunktion: einzelnen Config-Dict evaluieren (für Hybrid Search)
-# ---------------------------------------------------------------------------
-
 def _eval_config(config, model_type, data_np, seed):
     """Evaluiert eine konkrete Konfiguration und gibt val_auroc + Metriken zurück."""
     if model_type == "mlp":
-        input_dim = data_np["X_train"].shape[1]
-        loaders = make_loaders(data_np, batch_size=config["batch_size"])
-        model = MLP(
-            input_dim,
-            hidden_dim=config["hidden_dim"],
-            dropout=config["dropout"],
-            num_layers=config.get("num_layers", 1),
-            activation=config.get("activation", "relu"),
-        )
-        res = measure_resources_mlp(
-            train_fn=lambda: train_mlp(
-                model,
-                loaders["train"],
-                loaders["val"],
-                lr=config["learning_rate"],
-                optimizer_name=config.get("optimizer_name", "adam"),
-                weight_decay=config.get("weight_decay", 0.0),
-            ),
-            eval_fn=lambda m: evaluate_mlp(m, loaders["val"]),
+        return train_mlp(
+            data_np["X_train"], data_np["y_train"],
+            data_np["X_val"],   data_np["y_val"],
+            config,
         )
     else:
-        params = {**config, "random_state": seed}
-        res = measure_resources_rf(
-            train_fn=lambda: train_rf(params, data_np["X_train"], data_np["y_train"]),
-            eval_fn=lambda m: evaluate_rf(m, data_np["X_val"], data_np["y_val"]),
-            X_val=data_np["X_val"],
+        return train_rf(
+            data_np["X_train"], data_np["y_train"],
+            data_np["X_val"],   data_np["y_val"],
+            config, seed=seed,
         )
-    return res
 
 
 def _sample_hp_grid(hp_name, param_space, n_grid):
@@ -180,10 +123,6 @@ def _sample_hp_grid(hp_name, param_space, n_grid):
     return candidates
 
 
-# ---------------------------------------------------------------------------
-# Bayesian Optimization (TPE)
-# ---------------------------------------------------------------------------
-
 def bayesian_search(model_type: str, seed: int, n_trials: int, data_np: dict) -> list:
     """Bayesian Optimization mit OptunaSearch (TPE) via Ray Tune."""
     if model_type == "mlp":
@@ -206,10 +145,6 @@ def bayesian_search(model_type: str, seed: int, n_trials: int, data_np: dict) ->
     )
     return _extract_results(analysis, list(param_space.keys()))
 
-
-# ---------------------------------------------------------------------------
-# Hybrid Search (RS + Grid Search per HP)
-# ---------------------------------------------------------------------------
 
 def hybrid_search(
     model_type: str,
@@ -250,7 +185,7 @@ def hybrid_search(
     if budget_per_iter * k_iterations > n_trials:
         # n_random proportional kürzen
         available = n_trials // k_iterations
-        n_random = max(1, available - n_params * n_grid)
+        n_random = max(0, available - n_params * n_grid)
 
     all_rows = []
     trial_counter = 0
@@ -262,30 +197,33 @@ def hybrid_search(
     for k in range(k_iterations):
         print(f"\n[hybrid_search] Iteration {k+1}/{k_iterations} — Phase 1: {n_random} Random Trials")
 
-        # --- Phase 1: Random Search ---
-        trainable = with_parameters(trial_fn, data_np=data_np, seed=seed)
-        analysis = tune.run(
-            trainable,
-            config=param_space,
-            num_samples=n_random,
-            metric="val_auroc",
-            mode="max",
-            max_concurrent_trials=1,
-            verbose=0,
-        )
-        phase1_rows = _extract_results(analysis, param_keys)
-        for row in phase1_rows:
-            row["trial_nr_global"] = trial_counter
-            trial_counter += 1
-        all_rows.extend(phase1_rows)
+        if n_random > 0:
+            # --- Phase 1: Random Search ---
+            trainable = with_parameters(trial_fn, data_np=data_np, seed=seed)
+            analysis = tune.run(
+                trainable,
+                config=param_space,
+                num_samples=n_random,
+                metric="val_auroc",
+                mode="max",
+                max_concurrent_trials=1,
+                verbose=0,
+            )
+            phase1_rows = _extract_results(analysis, param_keys)
+            for row in phase1_rows:
+                row["trial_nr_global"] = trial_counter
+                trial_counter += 1
+            all_rows.extend(phase1_rows)
 
-        # Bestes Config aus Phase 1 ermitteln
-        best_phase1 = max(phase1_rows, key=lambda r: r.get("val_auroc") or -1)
-        if (best_phase1.get("val_auroc") or -1) > best_auroc:
-            best_auroc = best_phase1["val_auroc"]
-            best_config = {k: best_phase1[f"hp_{k}"] for k in param_keys if f"hp_{k}" in best_phase1}
+            # Bestes Config aus Phase 1 ermitteln
+            best_phase1 = max(phase1_rows, key=lambda r: r.get("val_auroc") or -1)
+            if (best_phase1.get("val_auroc") or -1) > best_auroc:
+                best_auroc = best_phase1["val_auroc"]
+                best_config = {k: best_phase1[f"hp_{k}"] for k in param_keys if f"hp_{k}" in best_phase1}
 
-        print(f"[hybrid_search] Bestes Config nach Phase 1: auroc={best_auroc:.4f}")
+            print(f"[hybrid_search] Bestes Config nach Phase 1: auroc={best_auroc:.4f}")
+        else:
+            print("[hybrid_search] Phase 1 übersprungen (Budget vollständig für Grid Search reserviert)")
 
         # --- Phase 2: Per-HP Grid Search ---
         print(f"[hybrid_search] Phase 2: Grid Search über {n_params} HPs × {n_grid} Punkte")

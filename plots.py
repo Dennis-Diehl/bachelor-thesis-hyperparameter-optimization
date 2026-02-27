@@ -21,10 +21,7 @@ import numpy as np
 import pandas as pd
 
 
-# ---------------------------------------------------------------------------
-# Konzeptbild: Suchraum-Visualisierung (RS / GS / Hybrid)
-# ---------------------------------------------------------------------------
-
+# konzeptionelle Darstellung der beiden Suchstrategien — Abbildung für die Thesis
 def plot_search_space_2d(output_dir):
     """Konzeptbild mit 2 Subplots: Bayesian Optimization (TPE) und Hybrid Search.
 
@@ -109,10 +106,7 @@ def plot_search_space_2d(output_dir):
     print(f"[plots] Saved: {out_path}")
 
 
-# ---------------------------------------------------------------------------
-# Konvergenz-Plot
-# ---------------------------------------------------------------------------
-
+# bisher bestes AUROC pro Trial, über Seeds gemittelt
 def plot_convergence(df, results_dir):
     """Best-so-far Val-AUROC vs. Trial-Nummer.
 
@@ -156,10 +150,7 @@ def plot_convergence(df, results_dir):
             plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# Vergleichs-Boxplot
-# ---------------------------------------------------------------------------
-
+# Boxplot des besten AUROC und der Accuracy pro Seed, BO vs. Hybrid
 def plot_comparison(df, results_dir):
     """Boxplot: bester AUROC und beste Accuracy pro Seed (BO vs. Hybrid).
 
@@ -215,10 +206,7 @@ def plot_comparison(df, results_dir):
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# Trainingszeit
-# ---------------------------------------------------------------------------
-
+# kumulative Trainingszeit pro Methode, über Seeds gemittelt
 def plot_training_time(df, results_dir):
     """Balkendiagramm: kumulative Trainingszeit pro Methode × Modell × Datensatz."""
     for dataset_name in df["dataset"].unique():
@@ -253,10 +241,7 @@ def plot_training_time(df, results_dir):
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# Effizienz-Plot
-# ---------------------------------------------------------------------------
-
+# Trainingszeit vs. bestes AUROC — wie schnell findet jede Methode gute Konfigurationen?
 def plot_efficiency(df, results_dir):
     """Scatter: kumulierte Trainingszeit (X) vs. bester bisheriger AUROC (Y)."""
     palette = ["#4C72B0", "#DD8452", "#55A868", "#C44E52"]
@@ -294,10 +279,7 @@ def plot_efficiency(df, results_dir):
             plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# Energie-Plot
-# ---------------------------------------------------------------------------
-
+# gesamter Energieverbrauch pro Methode und Datensatz
 def plot_energy(df, results_dir):
     """Balkendiagramm: Gesamt-Energieverbrauch (kWh) pro Methode × Modell × Datensatz."""
     for dataset_name in df["dataset"].unique():
@@ -332,10 +314,7 @@ def plot_energy(df, results_dir):
         plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# HP-Verteilungen
-# ---------------------------------------------------------------------------
-
+# Histogramme der tatsächlich gesampleten HP-Werte pro Optimizer
 def plot_hp_distributions(df, results_dir):
     """Histogramme der gewählten HP-Werte pro Datensatz × Modell."""
     hp_cols = [c for c in df.columns if c.startswith("hp_")]
@@ -387,10 +366,7 @@ def plot_hp_distributions(df, results_dir):
             plt.close(fig)
 
 
-# ---------------------------------------------------------------------------
-# Zusammenfassende CSV: bestes AUROC + Accuracy pro Run
-# ---------------------------------------------------------------------------
-
+# erstellt die Zusammenfassungs-CSV — bestes AUROC, Accuracy und Konvergenzgeschwindigkeit pro Run
 def _trials_to_pct_best(series_sorted, pct=0.95):
     """Gibt den 1-basierten Trial-Index zurück, ab dem cummax >= pct * max erreicht wird.
 
@@ -450,10 +426,7 @@ def save_summary_csv(df, results_dir):
     return summary
 
 
-# ---------------------------------------------------------------------------
-# Cross-Dataset-Vergleich: AUROC + Accuracy über alle Datensätze
-# ---------------------------------------------------------------------------
-
+# Balkendiagramm beider Metriken über alle drei Datensätze, eine Figure pro Modell
 def plot_cross_dataset_comparison(df, results_dir):
     """Balkendiagramm: mittlerer bester AUROC und Accuracy je Datensatz × Optimizer.
 

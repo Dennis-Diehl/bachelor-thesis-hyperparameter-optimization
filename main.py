@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import ray
 import torch
+from sklearn.preprocessing import StandardScaler
 
 from config import N_TRIALS, SEEDS, DATASETS
 from data import load_data
@@ -95,7 +96,18 @@ def main():
 
         for seed in SEEDS:
             set_seed(seed)
-            data_np, _ = load_data(seed, dataset=dataset_name)
+            data_np = load_data(seed, dataset=dataset_name)
+
+            # Skalierung — einmal pro Seed, nicht in load_data oder im Wrapper
+            scaler = StandardScaler()
+            X_train_s = scaler.fit_transform(data_np["X_train"])
+            X_val_s   = scaler.transform(data_np["X_val"])
+            X_test_s  = scaler.transform(data_np["X_test"])
+            data_np_scaled = {
+                "X_train": X_train_s, "y_train": data_np["y_train"],
+                "X_val":   X_val_s,   "y_val":   data_np["y_val"],
+                "X_test":  X_test_s,  "y_test":  data_np["y_test"],
+            }
 
             for model_type, model_name, search_fn, optimizer_name in experimente:
                 print(f"\n{'='*60}")
@@ -103,7 +115,7 @@ def main():
                       f"Optimizer={optimizer_name.upper()}  Seed={seed}")
                 print(f"{'='*60}")
 
-                ergebnisse = search_fn(model_type, seed, N_TRIALS, data_np)
+                ergebnisse = search_fn(model_type, seed, N_TRIALS, data_np_scaled)
 
                 for trial_nr, zeile in enumerate(ergebnisse, start=1):
                     zeile.update({

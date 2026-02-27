@@ -13,11 +13,7 @@ from models import MLP, RFModel
 from config import MAX_EPOCHS, EARLY_STOPPING_PATIENCE
 
 
-# ---------------------------------------------------------------------------
-# MLP Training
-# ---------------------------------------------------------------------------
-
-def train_mlp(
+def _train_mlp_loop(
     model,
     train_loader,
     val_loader,
@@ -103,11 +99,7 @@ def evaluate_mlp(model, loader):
     return acc, auroc
 
 
-# ---------------------------------------------------------------------------
-# Random Forest Training
-# ---------------------------------------------------------------------------
-
-def train_rf(params, X_train, y_train):
+def _train_rf_model(params, X_train, y_train):
     """Trainiert Random Forest und gibt das Modell zurück."""
     model = RFModel(**params)
     model.fit(X_train, y_train)
@@ -122,10 +114,6 @@ def evaluate_rf(model, X, y):
     auroc = roc_auc_score(y, probs)
     return acc, auroc
 
-
-# ---------------------------------------------------------------------------
-# Ressourcenmessung
-# ---------------------------------------------------------------------------
 
 def measure_resources_mlp(train_fn, eval_fn):
     """Misst Trainingszeit, Inferenzzeit und Energie für MLP.
@@ -195,3 +183,47 @@ def measure_resources_rf(train_fn, eval_fn, X_val):
         "inference_time": inference_time,
         "energy_kwh": emissions if emissions is not None else 0.0,
     }
+
+
+def train_mlp(X_train, y_train, X_val, y_val, config) -> dict:
+    """Wrapper: nimmt numpy Arrays, gibt Metriken-Dict zurück.
+
+    Intern: DataLoader erstellen, Modell bauen, trainieren, evaluieren.
+    """
+    from data import to_dataloaders
+    loaders = to_dataloaders(
+        {"X_train": X_train, "y_train": y_train, "X_val": X_val, "y_val": y_val},
+        batch_size=config["batch_size"],
+    )
+    input_dim = X_train.shape[1]
+    model = MLP(
+        input_dim,
+        hidden_dim=config["hidden_dim"],
+        dropout=config["dropout"],
+        num_layers=config.get("num_layers", 1),
+        activation=config.get("activation", "relu"),
+    )
+    return measure_resources_mlp(
+        train_fn=lambda: _train_mlp_loop(
+            model,
+            loaders["train"],
+            loaders["val"],
+            lr=config["learning_rate"],
+            optimizer_name=config.get("optimizer_name", "adam"),
+            weight_decay=config.get("weight_decay", 0.0),
+        ),
+        eval_fn=lambda m: evaluate_mlp(m, loaders["val"]),
+    )
+
+
+def train_rf(X_train, y_train, X_val, y_val, config, seed=42) -> dict:
+    """Wrapper: nimmt numpy Arrays, gibt Metriken-Dict zurück.
+
+    Intern: Modell bauen, trainieren, evaluieren.
+    """
+    params = {**config, "random_state": seed}
+    return measure_resources_rf(
+        train_fn=lambda: _train_rf_model(params, X_train, y_train),
+        eval_fn=lambda m: evaluate_rf(m, X_val, y_val),
+        X_val=X_val,
+    )

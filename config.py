@@ -13,7 +13,7 @@ TEST_SIZE = 0.2
 VAL_SIZE = 0.2  # bezogen auf den Rest nach Test-Split → effektiv 60/20/20
 
 # Anzahl Trials pro Optimierer-Lauf
-N_TRIALS = 40
+N_TRIALS = 3
 
 # MLP-Training
 MAX_EPOCHS = 100
