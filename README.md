@@ -48,10 +48,13 @@ This executes all 700 runs (7 optimizers × 2 models × 5 datasets × 10 seeds) 
 ### Run a single experiment
 
 ```bash
-python run_single.py --dataset breast_cancer --model mlp --optimizer acrs_shrink --seed 42
+python run_single.py --dataset <dataset> --model <model> --optimizer <optimizer> --seed <seed>
 ```
 
-Available optimizers: `bo`, `rs`, `cmaes`, `acrs`, `acrs_normal`, `acrs_shrink`, `acrs_normal_shrink`.
+- Available datasets: `breast_cancer`, `diabetes`, `bank_marketing`, `german_credit`, `adult_income`.
+- Available models: `mlp`, `rf`.
+- Available optimizers: `bo`, `rs`, `cmaes`, `acrs`, `acrs_normal`, `acrs_shrink`, `acrs_normal_shrink`.
+- Available seeds: `42`, `123`, `456`, `789`, `1234`, `2345`, `3456`, `4567`, `5678`, `6789`.
 
 ### Generate figures and tables
 
